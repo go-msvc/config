@@ -10,7 +10,7 @@ import (
 type ISource interface {
 	Name() string
 	Get(name string, tmpl IData) (IData, error)
-	GetAll(name string) map[string]IData
+	GetAll(name string) map[string]interface{}
 }
 
 //ISources is a collection of config sources
@@ -18,7 +18,7 @@ type ISources interface {
 	Add(s ISource)
 	With(s ISource) ISources
 	Get(name string, tmpl IData) (IData, error)
-	GetAll(name string) map[string]IData
+	GetAll(name string) map[string]interface{}
 }
 
 //NewSources makes a new collection of config sources
@@ -79,15 +79,15 @@ func (sources *sources) Get(name string, tmpl IData) (IData, error) {
 	return nil, nil
 }
 
-func (sources *sources) GetAll(name string) map[string]IData {
+func (sources *sources) GetAll(name string) map[string]interface{} {
 	sources.mutex.Lock()
 	defer sources.mutex.Unlock()
 
-	all := map[string]IData{}
+	all := make(map[string]interface{})
 	for _, source := range sources.list {
-		if list := source.GetAll(name); len(list) > 0 {
+		if sourceList := source.GetAll(name); len(sourceList) > 0 {
 			//merge list into all
-			for n, d := range list {
+			for n, d := range sourceList {
 				if _, ok := all[n]; ok {
 					log.Errorf("Ignore duplicate config %s:%s", source.Name(), n)
 				} else {
@@ -96,5 +96,6 @@ func (sources *sources) GetAll(name string) map[string]IData {
 			}
 		}
 	}
+	log.Debugf("Found %d configs named(%s)", len(all), name)
 	return all
 }

@@ -35,8 +35,6 @@ func (files *source) file(name string) *file {
 	f, err := files.getFile(name)
 	if err != nil {
 		log.Errorf("cannot get file: %v", err)
-	} else {
-		log.Debugf("got file(%s): %+v", name, f.json)
 	}
 	return f
 }
@@ -83,8 +81,6 @@ func (files *source) getFile(name string) (*file, error) {
 } //source.getFile()
 
 func (files *source) Get(name string, tmpl config.IData) (config.IData, error) {
-	log.Debugf("%s.Get(%s)...", files.Name(), name)
-
 	//skip leading '.'
 	for len(name) > 0 && name[0] == '.' {
 		name = name[1:]
@@ -100,11 +96,41 @@ func (files *source) Get(name string, tmpl config.IData) (config.IData, error) {
 	default:
 	} //switch(nr parts in name)
 	panic(fmt.Sprintf("Get(\"%s\") -> %d parts", name, len(parts)))
-}
+} //source.Get()
 
-func (files *source) GetAll(name string) map[string]config.IData {
-	log.Debugf("%s.GetAll(%s)...", files.Name(), name)
-	return nil
+//name e.g. "abc.server" will look for file "abc"
+//then object "server" then return each item in that object,
+//e.g. map will consist of two items "nats" + "rest"
+func (files *source) GetAll(name string) map[string]interface{} {
+	all := make(map[string]interface{})
+	//first part of name must be filename, e.g. "abc.server.*"
+	//then expect file abc to exist with server.* inside...
+	names := strings.SplitN(name, ".", 2)
+	if len(names) != 2 || len(names[0]) == 0 {
+		return all
+	}
+	f := files.file(names[0])
+	if f == nil {
+		return all
+	}
+
+	//got file e.g. "abc", now need to look deeper for e.g. "server.*"
+	//meaning we look for server, then iterate over items inside e.g. nats + rest
+	if len(names) > 1 && len(names[1]) > 0 {
+		data, err := f.Get(names[1], jsonObject{})
+		if err != nil {
+			log.Errorf("failed to get file(%s).data(%s)", names[0], names[1])
+		}
+		objPtr := data.(*jsonObject)
+
+		//add each named item from the object
+		for n, v := range *objPtr {
+			all[n] = v
+		}
+	} else {
+		log.Errorf("names[1] not defined... TODO")
+	}
+	return all
 }
 
 type file struct {
@@ -114,7 +140,6 @@ type file struct {
 }
 
 func (f file) Get(name string, tmpl config.IData) (config.IData, error) {
-	log.Debugf("file(%s).Get(%s)...", f.name, name)
 	if f.json == nil {
 		return nil, nil
 	}
@@ -123,9 +148,7 @@ func (f file) Get(name string, tmpl config.IData) (config.IData, error) {
 	if dataObj == nil {
 		return nil, nil
 	}
-	log.Debugf("dataObj: %+v", dataObj)
 	jsonObj, _ := json.Marshal(dataObj)
-	log.Debugf("jsonObj: %+v", string(jsonObj))
 
 	//got the data - parse into struct
 	dataValue := reflect.New(reflect.TypeOf(tmpl))
@@ -136,13 +159,14 @@ func (f file) Get(name string, tmpl config.IData) (config.IData, error) {
 	if err := configData.Validate(); err != nil {
 		return nil, log.Wrapf(err, "file(%s): invalid %s", f.name, name)
 	}
-
-	log.Debugf("loaded %s (%T):%+v", name, configData, configData)
 	return configData, nil
 }
 
+type jsonObject map[string]interface{}
+
+func (obj jsonObject) Validate() error { return nil }
+
 func jsonGet(obj map[string]interface{}, name string) interface{} {
-	log.Debugf("Getting json(%s): %+v", name, obj)
 	//skip leading '.'
 	for len(name) > 0 && name[0] == '.' {
 		name = name[1:]
