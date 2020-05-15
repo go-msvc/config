@@ -121,6 +121,10 @@ func (files *source) GetAll(name string) map[string]interface{} {
 		if err != nil {
 			log.Errorf("failed to get file(%s).data(%s)", names[0], names[1])
 		}
+		if data == nil {
+			log.Debugf("%s.%s not found", names[0], names[1])
+			return nil
+		}
 		objPtr := data.(*jsonObject)
 
 		//add each named item from the object
