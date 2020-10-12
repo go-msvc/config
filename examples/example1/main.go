@@ -29,7 +29,9 @@ func main() {
 	log.Debugf("initial loaded config: %v\n", myConfig)
 
 	//get current config struct values to show the created server
-	c1 := myConfig.Current().(myConfigStruct)
+	c1d, rel1 := myConfig.Use()
+	defer rel1()
+	c1 := c1d.(myConfigStruct)
 	log.Debugf("server(addr=%s) = %+v", c1.Server.Addr(), c1.Server)
 
 	//set same value in config = must not re-create
@@ -50,7 +52,9 @@ func main() {
 	time.Sleep(time.Second)
 	//we expect a new server to exist with new config
 	//and the old server still exists because we kept a reference to it in c1
-	c2 := myConfig.Current().(myConfigStruct)
+	c2d, rel2 := myConfig.Use()
+	defer rel2()
+	c2 := c2d.(myConfigStruct)
 	log.Debugf("server(addr=%s) = %+v", c2.Server.Addr(), c2.Server)
 	if c2.Server.Addr() != "localhost:7777" {
 		panic(errors.Errorf("after Set() addr is wrong: %s", c2.Server.Addr()))
@@ -70,7 +74,9 @@ func main() {
 //- configurable things (public + json tag + type that implement config.IConfigurable)
 //if config implements IValidator, it will be called each time config updated to validate
 type myConfigStruct struct {
-	Name   string `json:"name" doc:"Name is a configurable value"`
+	Name string `json:"name" doc:"Name is a configurable value"`
+
+	//works: Server Server
 	Server Server `json:"server" doc:"HTTP Server"`
 }
 
@@ -88,9 +94,12 @@ type Server struct {
 	running bool
 }
 
-func (s Server) Create(c serverConfig) (Server, error) {
+//constructor must have (userStruct) reveiver and return (*userStruct, error)
+func (Server) Create(c serverConfig) (*Server, error) {
 	log.Debugf("Creating server %v\n", c)
-	s.cfg = c
+	s := &Server{
+		cfg: c,
+	}
 	go func() {
 		s.running = true
 		s.server = &http.Server{Addr: c.Addr, Handler: nil}
@@ -105,7 +114,8 @@ func (s Server) Create(c serverConfig) (Server, error) {
 	return s, nil
 }
 
-func (s *Server) Destroy() {
+//destructor must have (*userStruct) or (userStruct) receiver
+func (s Server) Destroy() {
 	if s.running {
 		log.Debugf("Stopping server %+v ...", s.cfg)
 		//stop the server
@@ -113,7 +123,7 @@ func (s *Server) Destroy() {
 		s.running = false
 		log.Debugf("Stopped server %+v ...", s.cfg)
 	} else {
-		log.Debugf("Already stoped server %+v ...", s.cfg)
+		log.Debugf("Already stopped server %+v ...", s.cfg)
 	}
 }
 
