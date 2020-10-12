@@ -1,10 +1,12 @@
 package tests_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/go-msvc/config"
 	"github.com/go-msvc/config/source/mem"
+	"github.com/go-msvc/errors"
 	"github.com/go-msvc/logger"
 )
 
@@ -15,113 +17,131 @@ func init() {
 	log = logger.ForThisPackage()
 }
 
-func TestPerson(t *testing.T) {
+//car is constructed from config
+type car struct {
+	id string
+}
+
+func (car) Create(cfg carConfig) (*car, error) {
+	return &car{
+		id: fmt.Sprintf("%s.%d.%s", cfg.Man, cfg.Year, cfg.Mod),
+	}, nil
+}
+
+type carConfig struct {
+	Man  string `json:"man"`
+	Mod  string `json:"mod"`
+	Year int    `json:"year"`
+}
+
+func (cfg carConfig) Validate() error {
+	if cfg.Man == "" || cfg.Mod == "" || cfg.Year <= 0 {
+		return errors.Errorf("invalid car config %+v", cfg)
+	}
+	return nil
+}
+
+func TestConCar(t *testing.T) {
 	config.Sources().Reset()
-	cfgInMemory := mem.New().With("name", "Jan").With("age", 10)
+	cfgInMemory := mem.New().With("bakkie", map[string]interface{}{"man": "Toyota", "mod": "Hilux", "year": 2009})
 	config.Sources().Add(cfgInMemory)
 
-	personConfig := config.MustAdd(person{})
-	p := personConfig.Current().(person)
-	if p.Name != "Jan" || p.Age != 10 {
+	type configWithBakkie struct {
+		Bakkie car `json:"bakkie"`
+	}
+	c := config.MustAdd(configWithBakkie{})
+	p, rel := c.Use()
+	defer rel()
+	pp := p.(configWithBakkie)
+	if pp.Bakkie.id != "Toyota.2009.Hilux" {
 		t.Fatalf("wrong values: %+v", p)
 	}
 }
 
-type person struct {
-	Name string `json:"name"`
-	Age  int    `json:"age"`
-}
-
-func TestConfigWithPerson(t *testing.T) {
+func TestConMissingCar(t *testing.T) {
 	config.Sources().Reset()
-	cfgInMemory := mem.New().With("p1", map[string]interface{}{"name": "Jan", "age": 10})
+	cfgInMemory := mem.New()
 	config.Sources().Add(cfgInMemory)
 
-	type configWithP1 struct {
-		P1 person `json:"p1"`
+	type configWithBakkie struct {
+		Bakkie car `json:"bakkie"`
 	}
-	c := config.MustAdd(configWithP1{})
-	p := c.Current().(configWithP1)
-	if p.P1.Name != "Jan" || p.P1.Age != 10 {
-		t.Fatalf("wrong values: %+v", p)
-	}
-}
-
-func TestMissingPerson(t *testing.T) {
-	config.Sources().Reset()
-	cfgInMemory := mem.New() //.With("p1", map[string]interface{}{"name": "Jan", "age": 10})
-	config.Sources().Add(cfgInMemory)
-
-	type configWithP1 struct {
-		P1 person `json:"p1"`
-	}
-	_, err := config.Add(configWithP1{})
+	_, err := config.Add(configWithBakkie{})
 	if err == nil {
 		t.Fatalf("added without error while config is missing")
 	}
 }
 
-func TestConfigWithOptionalPersonDefined(t *testing.T) {
+func TestConOptDefined(t *testing.T) {
 	config.Sources().Reset()
-	cfgInMemory := mem.New().With("p1", map[string]interface{}{"name": "Jan", "age": 10})
+	cfgInMemory := mem.New().With("bakkie", map[string]interface{}{"man": "Toyota", "mod": "Hilux", "year": 2009})
 	config.Sources().Add(cfgInMemory)
 
-	type configWithOptP1 struct {
-		P1 *person `json:"p1"`
+	type configWithBakkie struct {
+		Bakkie *car `json:"bakkie"` //optional because ptr
 	}
-	c := config.MustAdd(configWithOptP1{})
-	p := c.Current().(configWithOptP1)
-	if p.P1 == nil || p.P1.Name != "Jan" || p.P1.Age != 10 {
-		t.Fatalf("loaded wrong values: %+v", p)
+	c := config.MustAdd(configWithBakkie{})
+	p, rel := c.Use()
+	defer rel()
+	pp := p.(configWithBakkie)
+	if pp.Bakkie == nil || pp.Bakkie.id != "Toyota.2009.Hilux" {
+		t.Fatalf("wrong values: %+v", pp)
 	}
 }
 
-func TestConfigWithOptionalPersonAbsent(t *testing.T) {
+func TestConOptAbsent(t *testing.T) {
 	config.Sources().Reset()
-	cfgInMemory := mem.New() //.With("p1", map[string]interface{}{"name": "Jan", "age": 10})
+	cfgInMemory := mem.New()
 	config.Sources().Add(cfgInMemory)
 
-	type configWithOptP1 struct {
-		P1 *person `json:"p1"`
+	type configWithBakkie struct {
+		Bakkie *car `json:"bakkie"` //optional because ptr
 	}
-	c := config.MustAdd(configWithOptP1{})
-	p := c.Current().(configWithOptP1)
-	if p.P1 != nil {
-		t.Fatalf("loaded absent p1")
+	c := config.MustAdd(configWithBakkie{})
+	p, rel := c.Use()
+	defer rel()
+	pp := p.(configWithBakkie)
+	if pp.Bakkie != nil {
+		t.Fatalf("loaded while absent")
 	}
 }
 
-func TestConfigWithRepeatedStructAbsent(t *testing.T) {
-	config.Sources().Reset()
-	cfgInMemory := mem.New() //.With("p1", map[string]interface{}{"name": "Jan", "age": 10})
-	config.Sources().Add(cfgInMemory)
-
-	type configWithOptP1 struct {
-		P1 *person `json:"p1"`
-		P2 *person `json:"p2"`
-	}
-	c := config.MustAdd(configWithOptP1{})
-	p := c.Current().(configWithOptP1)
-	if p.P1 != nil || p.P2 != nil {
-		t.Fatalf("loaded absent p1=%p or p2=%p", p.P1, p.P2)
-	}
-}
-
-func TestConfigWithRepeatedStruct(t *testing.T) {
+func TestConRepeated(t *testing.T) {
 	config.Sources().Reset()
 	cfgInMemory := mem.New().
-		With("p1", map[string]interface{}{"name": "Jan", "age": 10}).
-		With("p2", map[string]interface{}{"name": "Koos", "age": 20})
+		With("hilux", map[string]interface{}{"man": "Toyota", "mod": "Hilux", "year": 2009}).
+		With("ford", map[string]interface{}{"man": "Ford", "mod": "Ranger", "year": 2011})
 	config.Sources().Add(cfgInMemory)
 
-	type configWithOptP1 struct {
-		P1 *person `json:"p1"`
-		P2 *person `json:"p2"`
+	type configWithBakkie struct {
+		Hilux car `json:"hilux"`
+		Ford  car `json:"ford"`
 	}
-	c := config.MustAdd(configWithOptP1{})
-	p := c.Current().(configWithOptP1)
-	if p.P1 == nil || p.P1.Name != "Jan" || p.P1.Age != 10 ||
-		p.P2 == nil || p.P2.Name != "Koos" || p.P2.Age != 20 {
-		t.Fatalf("loaded absent p1=%p or p2=%p", p.P1, p.P2)
+	c := config.MustAdd(configWithBakkie{})
+	p, rel := c.Use()
+	defer rel()
+	pp := p.(configWithBakkie)
+	if pp.Hilux.id != "Toyota.2009.Hilux" || pp.Ford.id != "Ford.2011.Ranger" {
+		t.Fatalf("loaded invalid values %+v", pp)
+	}
+}
+
+func TestConRepeatedOptional(t *testing.T) {
+	config.Sources().Reset()
+	cfgInMemory := mem.New().
+		//With("hilux", map[string]interface{}{"man": "Toyota", "mod": "Hilux", "year": 2009}).
+		With("ford", map[string]interface{}{"man": "Ford", "mod": "Ranger", "year": 2011})
+	config.Sources().Add(cfgInMemory)
+
+	type configWithBakkie struct {
+		Hilux *car `json:"hilux"`
+		Ford  *car `json:"ford"`
+	}
+	c := config.MustAdd(configWithBakkie{})
+	p, rel := c.Use()
+	defer rel()
+	pp := p.(configWithBakkie)
+	if pp.Hilux != nil || pp.Ford == nil || pp.Ford.id != "Ford.2011.Ranger" {
+		t.Fatalf("loaded invalid values %+v", pp)
 	}
 }

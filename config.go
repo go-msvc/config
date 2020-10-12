@@ -83,7 +83,7 @@ func validateConfigStructType(t reflect.Type) (hasConstructedValues bool, err er
 		valType := f.Type
 		constructorMethod, hasConstructorMethod := valType.MethodByName(ConstructorMethodName)
 		if hasConstructorMethod {
-			log.Debugf("(%s)%s() = %v", valType, ConstructorMethodName, constructorMethod, hasConstructorMethod)
+			log.Debugf("(%s).%s() = %v", valType, ConstructorMethodName, constructorMethod)
 		}
 
 		//optional := false
@@ -394,3 +394,4 @@ var (
 //- add usage on configurable value
 //- keep timestamp and details of error last load and success (both) and count errors - clear when load success
 //- function to iterate over config and example of how to document it - build into ms
+//- load arrays of structs optional/required
