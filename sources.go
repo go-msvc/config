@@ -6,36 +6,7 @@ import (
 	"sync"
 
 	"github.com/go-msvc/errors"
-	logger "github.com/go-msvc/logger"
 )
-
-var log = logger.ForThisPackage()
-
-//Set a config value to override any other source
-//this is like setting hard coded value, but the code can
-//change it at any time, but no sources will be queried once
-//this is set. Set with value nil to undo the Set()
-func Set(name string, value interface{}) {
-	setMutex.Lock()
-	defer setMutex.Unlock()
-	if value == nil {
-		delete(setValues, name)
-		log.Debugf("Del %s", name)
-	} else {
-		setValues[name] = value
-		log.Debugf("Set %s: (%T) %+v", name, value, value)
-	}
-}
-
-func get(name string) (interface{}, bool) {
-	setMutex.Lock()
-	defer setMutex.Unlock()
-	if value, ok := setValues[name]; ok {
-		log.Debugf("Got: %s (%T) %+v", name, value, value)
-		return value, true
-	}
-	return nil, false
-}
 
 var (
 	setMutex  sync.Mutex
@@ -50,15 +21,20 @@ func Sources() ISources {
 //Get configured value
 //return error if source failed or value is invalid
 func Get(name string, defaultValue interface{}) (interface{}, error) {
-	return allSources.Get(name, defaultValue)
+	return allSources.Get(name, defaultValue, nil)
+}
+
+//Same as Get but get notifier if the value changes in the source it was obtained from
+//todo: also wants to get notifier when optional values becomes available in any source...
+func GetAndWatch(name string, defaultValue interface{}, notifier INotifier) (interface{}, error) {
+	return allSources.Get(name, defaultValue, notifier)
 }
 
 //ISources is a collection of config sources
 type ISources interface {
 	Reset()        //removes all sources
 	Add(s ISource) //add in order of execution
-	Get(name string, defaultValue interface{}) (interface{}, error)
-	//GetAll(name string) map[string]interface{}
+	Get(name string, defaultValue interface{}, notifier INotifier) (interface{}, error)
 }
 
 var (
@@ -99,28 +75,23 @@ func (s *sources) Add(source ISource) {
 	s.list = append(s.list, source)
 } //sources.Add()
 
-//return nil,nil if not found, data,nil if found + valid, nil,error if invalid or can't get
-func (s *sources) Get(name string, defaultValue interface{}) (interface{}, error) {
+//return:
+//		(value,nil) if found + valid,
+//		(nil,nil)   if not defined in any source
+//		(nil,error) if any source returned an error
+func (s *sources) Get(name string, defaultValue interface{}, notifier INotifier) (interface{}, error) {
 	log.Debugf("sources(%p).Get(%s,%T)", s, name, defaultValue)
-	value := defaultValue
-	if setValue, isSet := get(name); isSet {
-		value = setValue
-		log.Debugf("use %s: (%T) %+v", name, value, value)
-	} else {
-		s.mutex.Lock()
-		defer s.mutex.Unlock()
+	value, err := s.getValue(name, defaultValue, notifier)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get(%s)", name)
+	}
+	if value == nil {
+		//todo: if has notifier, watch when it becomes available? or rather do that on different call like Wait() because
+		//caller might not expect notifier reference to be kept open when value is not configured...
+		return nil, nil //not configured and default is nil
+	}
 
-		for _, source := range s.list {
-			sourceValue, err := source.Get(name)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed in source(%s).Get(%s)", source.Name(), name)
-			}
-			if sourceValue != nil {
-				value = sourceValue
-				break
-			}
-		} //for each source
-	} //if !isSet
+	log.Debugf("got %s: (%T) %+v", name, value, value)
 
 	//type check can only be applied if default was specified
 	if defaultValue != nil {
@@ -149,30 +120,23 @@ func (s *sources) Get(name string, defaultValue interface{}) (interface{}, error
 			log.Debugf("validated %s: (%T) %+v", name, value, value)
 		}
 	}
-	log.Debugf("return %s: (%T) %+v", name, value, value)
+	log.Debugf("use %s: (%T) %+v", name, value, value)
 	return value, nil
-} //Get()
+} //sources.Get()
 
-// func (s *sources) GetAll(name string) map[string]interface{} {
-// 	s.mutex.Lock()
-// 	defer s.mutex.Unlock()
-
-// 	all := make(map[string]interface{})
-// 	for _, source := range s.list {
-// 		if sourceList := source.GetAll(name); len(sourceList) > 0 {
-// 			//merge list into all
-// 			for n, d := range sourceList {
-// 				if _, ok := all[n]; ok {
-// 					log.Errorf("Ignore duplicate config %s:%s", source.Name(), n)
-// 				} else {
-// 					all[n] = d
-// 				}
-// 			}
-// 		}
-// 	}
-// 	log.Debugf("Found %d %s.*", len(all), name)
-// 	for n, v := range all {
-// 		log.Debugf("  [%s]:(%T):%v", n, v, v)
-// 	}
-// 	return all
-// } //sources.GetAll()
+//just get the value from sources, no validation yet
+func (s *sources) getValue(name string, defaultValue interface{}, notifier INotifier) (interface{}, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	for _, source := range s.list {
+		value, err := source.Get(name, notifier)
+		if err != nil {
+			return nil, errors.Wrapf(err, "source(%s).Get(%s) failed", source.Name(), name)
+		}
+		if value != nil {
+			log.Debugf("source(%s).get(%s) -> (%T) %+v", source.Name(), name, value, value)
+			return value, nil
+		}
+	} //for each source
+	return defaultValue, nil
+} //sources.getValue()

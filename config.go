@@ -7,7 +7,10 @@ import (
 	"time"
 
 	"github.com/go-msvc/errors"
+	"github.com/go-msvc/logger"
 )
+
+var log = logger.ForThisPackage()
 
 const ConstructorMethodName = "Create"
 
@@ -20,8 +23,8 @@ type IConfigurable interface {
 	Current() interface{}
 }
 
-func MustAdd(defaultValue interface{}) IConfigurable {
-	if c, err := Add(defaultValue); err != nil {
+func MustAdd(defaultStructValue interface{}) IConfigurable {
+	if c, err := Add(defaultStructValue); err != nil {
 		panic(fmt.Sprintf("%+v", err))
 	} else {
 		return c
@@ -29,20 +32,19 @@ func MustAdd(defaultValue interface{}) IConfigurable {
 }
 
 //add struct with configurable fields and default values
-func Add(defaultValue interface{}) (IConfigurable, error) {
-	//log := logger.NewTerminalLogger("111")
-	if defaultValue == nil {
+func Add(defaultStructValue interface{}) (IConfigurable, error) {
+	if defaultStructValue == nil {
 		return nil, errors.Errorf("Add(nil)")
 	}
-	t := reflect.TypeOf(defaultValue)
+	t := reflect.TypeOf(defaultStructValue)
 	if err := validateConfigStructType(t); err != nil {
-		return nil, errors.Wrapf(err, "cannot use %T as config struct", defaultValue)
+		return nil, errors.Wrapf(err, "cannot use %T as config struct", defaultStructValue)
 	}
 
 	//create new configurable and do init load
 	c := &configurable{
-		structType:   t,
-		defaultValue: reflect.ValueOf(defaultValue),
+		structType:         t,
+		defaultStructValue: reflect.ValueOf(defaultStructValue),
 	}
 	if err := c.load(); err != nil {
 		return nil, errors.Wrapf(err, "failed on init load")
@@ -104,10 +106,10 @@ var (
 )
 
 type configurable struct {
-	structType     reflect.Type
-	defaultValue   reflect.Value
-	structPtrValue reflect.Value
-	valueTimestamp time.Time
+	structType         reflect.Type
+	defaultStructValue reflect.Value
+	structPtrValue     reflect.Value
+	valueTimestamp     time.Time
 }
 
 func (c *configurable) Current() interface{} {
@@ -129,7 +131,7 @@ func (c *configurable) load() error {
 		if configureMethod, hasConstructor := f.Type.MethodByName(ConstructorMethodName); !hasConstructor {
 			//config value without constructor: get it and store in struct field
 			log.Debugf("%s.%s type %s has no %s()", c.structType.Name(), f.Name, f.Type.Name(), ConstructorMethodName)
-			configuredFieldValue, err := Get(tagName, c.defaultValue.Field(i).Interface())
+			configuredFieldValue, err := GetAndWatch(tagName, c.defaultStructValue.Field(i).Interface(), c)
 			if err != nil {
 				return errors.Wrapf(err, "cannot get config for %s.%s", c.structType.Name(), f.Name)
 			}
@@ -137,7 +139,7 @@ func (c *configurable) load() error {
 			log.Debugf("%s = (%T) %+v", tagName, configuredFieldValue, configuredFieldValue)
 		} else {
 			//config value with constructor: get the constructor arg from config
-			configuredValue, err := Get(tagName, reflect.New(configureMethod.Type.In(1)).Elem().Interface())
+			configuredValue, err := GetAndWatch(tagName, reflect.New(configureMethod.Type.In(1)).Elem().Interface(), c)
 			if err != nil {
 				return errors.Wrapf(err, "config error on %s", tagName)
 			}
@@ -203,7 +205,11 @@ func (c *configurable) load() error {
 	return nil
 } //configurable.load()
 
-//IData is configuration data/values
-// type IData interface {
-// 	Validate() error
-// }
+func (c *configurable) Notify(name string) {
+	log.Debugf("%v: NOTIFIER(%s)", c.structType.Name(), name)
+	if err := c.load(); err != nil {
+		log.Errorf("failed to load change to %s", name)
+	} else {
+		log.Debugf("loaded change to %s", name)
+	}
+}
