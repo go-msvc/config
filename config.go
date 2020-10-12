@@ -188,17 +188,25 @@ func (c *configurable) load(onlyNames []string) error {
 			log.Debugf("%s.%s type %s has no %s()", c.structType.Name(), f.Name, f.Type.Name(), ConstructorMethodName)
 			configuredFieldValue, err := GetAndWatch(tagName, c.defaultStructValue.Field(i).Interface(), c)
 			if err != nil {
-				return errors.Wrapf(err, "cannot get config for %s.%s", c.structType.Name(), f.Name)
+				return errors.Wrapf(err, "%s.%s: cannot get config %s", c.structType.Name(), f.Name, tagName)
 			}
-			vf.Set(reflect.ValueOf(configuredFieldValue))
-			log.Debugf("%s = (%T) %+v", tagName, configuredFieldValue, configuredFieldValue)
+			if f.Type.Kind() != reflect.Ptr && configuredFieldValue == nil {
+				//not optional and absent
+				return errors.Wrapf(err, "%s.%s: missing config %s", c.structType.Name(), f.Name, tagName)
+			}
+			if configuredFieldValue != nil {
+				vf.Set(reflect.ValueOf(configuredFieldValue))
+				log.Debugf("%s.%s: %s = (%T) %+v", c.structType.Name(), f.Name, tagName, configuredFieldValue, configuredFieldValue)
+			} else {
+				log.Debugf("%s.%s: %s (optional) not configured", c.structType.Name(), f.Name, tagName)
+			}
 		} else {
 			//config value with constructor: get the constructor arg from config
 			configuredValue, err := GetAndWatch(tagName, reflect.New(constructorMethod.Type.In(1)).Elem().Interface(), c)
 			if err != nil {
 				return errors.Wrapf(err, "config error on %s", tagName)
 			}
-			log.Debugf("config Value := (%T) %+v", configuredValue, configuredValue)
+			log.Debugf("%s.%s: %s = (%T) %+v", c.structType.Name(), f.Name, tagName, configuredValue, configuredValue)
 
 			//if not configured, item remains nil
 			//if has configured value, then call Configure(value)
@@ -293,7 +301,7 @@ func newConfigValue(revision int, structPtrValue reflect.Value) (cv *configValue
 		users:          map[string]bool{},
 		releaseChan:    make(chan string),
 	}
-	cv.logID = fmt.Sprintf("%s(#%d,%s)", cv.structPtrValue.Type().Name(), cv.revision, cv.ts)
+	cv.logID = fmt.Sprintf("%s(#%d,%s)", cv.structPtrValue.Elem().Type().Name(), cv.revision, cv.ts)
 	_, release = cv.use(logger.GetCaller(0))
 
 	//start background cleanup function that will terminate when released

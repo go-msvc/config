@@ -85,7 +85,7 @@ func (s *sources) Get(name string, defaultValue interface{}, notifier INotifier)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get(%s)", name)
 	}
-	if value == nil {
+	if value == nil || reflect.ValueOf(value).IsZero() {
 		//todo: if has notifier, watch when it becomes available? or rather do that on different call like Wait() because
 		//caller might not expect notifier reference to be kept open when value is not configured...
 		return nil, nil //not configured and default is nil

@@ -12,6 +12,7 @@ import (
 type IMemSource interface {
 	config.ISource
 	Set(name string, value interface{}) error
+	With(name string, value interface{}) IMemSource
 }
 
 var log = logger.ForThisPackage()
@@ -61,6 +62,11 @@ func (s *memSource) Set(name string, value interface{}) error {
 		}
 	}
 	return nil
+}
+
+func (s *memSource) With(name string, value interface{}) IMemSource {
+	s.set(name, value)
+	return s
 }
 
 func (s *memSource) set(name string, value interface{}) ([]config.INotifier, error) {
