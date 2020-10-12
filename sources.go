@@ -1,30 +1,64 @@
 package config
 
 import (
+	"encoding/json"
 	"reflect"
 	"sync"
 
 	"github.com/go-msvc/errors"
-	logger "github.com/go-msvc/log"
+	logger "github.com/go-msvc/logger"
 )
 
 var log = logger.ForThisPackage()
+
+//Set a config value to override any other source
+//this is like setting hard coded value, but the code can
+//change it at any time, but no sources will be queried once
+//this is set. Set with value nil to undo the Set()
+func Set(name string, value interface{}) {
+	setMutex.Lock()
+	defer setMutex.Unlock()
+	if value == nil {
+		delete(setValues, name)
+		log.Debugf("Del %s", name)
+	} else {
+		setValues[name] = value
+		log.Debugf("Set %s: (%T) %+v", name, value, value)
+	}
+}
+
+func get(name string) (interface{}, bool) {
+	setMutex.Lock()
+	defer setMutex.Unlock()
+	if value, ok := setValues[name]; ok {
+		log.Debugf("Got: %s (%T) %+v", name, value, value)
+		return value, true
+	}
+	return nil, false
+}
+
+var (
+	setMutex  sync.Mutex
+	setValues = map[string]interface{}{}
+)
 
 //Sources of config
 func Sources() ISources {
 	return allSources
 }
 
-//Get ...
-func Get(name string, tmpl IData) (IData, error) { return allSources.Get(name, tmpl) }
+//Get configured value
+//return error if source failed or value is invalid
+func Get(name string, defaultValue interface{}) (interface{}, error) {
+	return allSources.Get(name, defaultValue)
+}
 
 //ISources is a collection of config sources
 type ISources interface {
 	Reset()        //removes all sources
 	Add(s ISource) //add in order of execution
-
-	Get(name string, tmpl IData) (IData, error)
-	GetAll(name string) map[string]interface{}
+	Get(name string, defaultValue interface{}) (interface{}, error)
+	//GetAll(name string) map[string]interface{}
 }
 
 var (
@@ -46,7 +80,7 @@ func (s *sources) Reset() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.list = []ISource{}
-	log.Info("debug all config sources")
+	log.Infof("debug all config sources")
 }
 
 //Add to default list of config sources used by Get(name)
@@ -66,51 +100,79 @@ func (s *sources) Add(source ISource) {
 } //sources.Add()
 
 //return nil,nil if not found, data,nil if found + valid, nil,error if invalid or can't get
-func (s *sources) Get(name string, tmpl IData) (IData, error) {
-	log.Debugf("sources(%p).Get(%s,%T)", s, name, tmpl)
-	if tmpl == nil {
-		return nil, errors.Errorf("config.Get(%s,tmpl==nil)", name)
-	}
+func (s *sources) Get(name string, defaultValue interface{}) (interface{}, error) {
+	log.Debugf("sources(%p).Get(%s,%T)", s, name, defaultValue)
+	value := defaultValue
+	if setValue, isSet := get(name); isSet {
+		value = setValue
+		log.Debugf("use %s: (%T) %+v", name, value, value)
+	} else {
+		s.mutex.Lock()
+		defer s.mutex.Unlock()
 
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	for _, source := range s.list {
-		config, err := source.Get(name, tmpl)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get %s", name)
-		}
-		if config != nil {
-			if reflect.TypeOf(config) != reflect.TypeOf(tmpl) {
-				panic(errors.Errorf("source %T.Get(%s) -> %T != %T", source, name, config, tmpl))
+		for _, source := range s.list {
+			sourceValue, err := source.Get(name)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed in source(%s).Get(%s)", source.Name(), name)
 			}
-			return config, nil
-		}
-		log.Debugf("%s not found in %s", name, source.Name())
-	}
-	//not found in any source, or no sources...
-	return nil, nil
-}
-
-func (s *sources) GetAll(name string) map[string]interface{} {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	all := make(map[string]interface{})
-	for _, source := range s.list {
-		if sourceList := source.GetAll(name); len(sourceList) > 0 {
-			//merge list into all
-			for n, d := range sourceList {
-				if _, ok := all[n]; ok {
-					log.Errorf("Ignore duplicate config %s:%s", source.Name(), n)
-				} else {
-					all[n] = d
-				}
+			if sourceValue != nil {
+				value = sourceValue
+				break
 			}
+		} //for each source
+	} //if !isSet
+
+	//type check can only be applied if default was specified
+	if defaultValue != nil {
+		t := reflect.TypeOf(defaultValue)
+
+		//do type conversion if necessary
+		if reflect.TypeOf(value) != reflect.TypeOf(defaultValue) {
+			log.Debugf("convert %T -> %T ...", value, defaultValue)
+
+			jsonValue, err := json.Marshal(value)
+			if err != nil {
+				return nil, errors.Wrapf(err, "cannot write value as JSON")
+			}
+			newValuePtr := reflect.New(t)
+			if err := json.Unmarshal(jsonValue, newValuePtr.Interface()); err != nil {
+				return nil, errors.Wrapf(err, "cannot parse JSON value")
+			}
+			value = newValuePtr.Elem().Interface()
+			log.Debugf("parsed %s: (%T) %+v", name, value, value)
+		}
+
+		if validator, ok := value.(IValidator); ok {
+			if err := validator.Validate(); err != nil {
+				return nil, errors.Wrapf(err, "invalid %s", name)
+			}
+			log.Debugf("validated %s: (%T) %+v", name, value, value)
 		}
 	}
-	log.Debugf("Found %d %s.*", len(all), name)
-	for n, v := range all {
-		log.Debugf("  [%s]:(%T):%v", n, v, v)
-	}
-	return all
-} //sources.GetAll()
+	log.Debugf("return %s: (%T) %+v", name, value, value)
+	return value, nil
+} //Get()
+
+// func (s *sources) GetAll(name string) map[string]interface{} {
+// 	s.mutex.Lock()
+// 	defer s.mutex.Unlock()
+
+// 	all := make(map[string]interface{})
+// 	for _, source := range s.list {
+// 		if sourceList := source.GetAll(name); len(sourceList) > 0 {
+// 			//merge list into all
+// 			for n, d := range sourceList {
+// 				if _, ok := all[n]; ok {
+// 					log.Errorf("Ignore duplicate config %s:%s", source.Name(), n)
+// 				} else {
+// 					all[n] = d
+// 				}
+// 			}
+// 		}
+// 	}
+// 	log.Debugf("Found %d %s.*", len(all), name)
+// 	for n, v := range all {
+// 		log.Debugf("  [%s]:(%T):%v", n, v, v)
+// 	}
+// 	return all
+// } //sources.GetAll()

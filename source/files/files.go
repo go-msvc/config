@@ -10,8 +10,10 @@ import (
 	"sync"
 
 	"github.com/go-msvc/config"
-	"github.com/jansemmelink/log"
+	"github.com/go-msvc/logger"
 )
+
+var log = logger.NewLogger("config/files")
 
 //New creates a source of config from files in a directory
 func New(dir string) config.ISource {
