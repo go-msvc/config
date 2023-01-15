@@ -1,5 +1,33 @@
 # Config #
 
+A golang package to use configuration. Why?
+
+Features:
+* Validates configuration with easy to understand error messages.
+* Can documents your configuration schema and values in use.
+* Supports multiple and custom sources of configuration values.
+* Supports construction of configured items.
+
+# Construction of Items #
+
+The most useful part of this library is to write code without knowing which implementation you are using. For example you need to host a micro-service, you can serve it as an HTTP REST API,
+or a NATS or Kafka or RabbitMQ consumer, or run it against a file containing the request data.
+
+In this case, your program can indicate the interface it needs and use the interface.
+
+After completing the program, you can implement that interface in many ways, supporting all
+the kinds of ways you want to serve the micro-service and then just configure the one to use.
+
+
+
+
+
+
+Configuration is considered constant for the lifetime of your program.
+If you need dynamic values, use a database.
+
+
+
 Loads configuration.
 
 Configuration:
