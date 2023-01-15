@@ -1,9 +1,7 @@
-github.com/go-msvc/assert v0.0.0-20221211181107-6279216babaa h1:bSiOyCzLmNlRRLauATfFb+5+AZRIH555vIAMN59cz94=
-github.com/go-msvc/data v0.0.0-20221211183738-142895e6cf1c h1:SqgvRBO5OUtvKMP1PJGw7XbdUslEdssdp2skSgnwD/o=
-github.com/go-msvc/data v0.0.0-20221211183738-142895e6cf1c/go.mod h1:1jMyD+LyQbN7XLM3JZujVJSjhdkPcfXHAYPM/LjSie0=
+github.com/go-msvc/assert v1.0.0 h1:6U3QvvtI5GOOPYNqDhXwkV+Lzp7FFChKXMZrfVy7tUA=
+github.com/go-msvc/data v1.0.1 h1:dLOdPGXva/4857v9UV2D2PzEXctBztYgAjgts9gMNPg=
+github.com/go-msvc/data v1.0.1/go.mod h1:+fx5vNSdAEE7sZNjYrKP+BYmHcKs0ieX5F+MO/pu53c=
 github.com/go-msvc/errors v1.2.0 h1:fTZypG1qs7lDtYfGYKDey62lMCT5ClsyxeMysrxNo0g=
 github.com/go-msvc/errors v1.2.0/go.mod h1:dbMiCuWpUiARCkC19IDEpcGIx11VYWq1+vGfF0NAenA=
 github.com/go-msvc/logger v1.0.0 h1:OELJmIpXSRLnbmy4UMc1IWQiQBH5ODZDjeofc540Lzg=
 github.com/go-msvc/logger v1.0.0/go.mod h1:qHIjKcyl03uKxD2SrJa6UqSfp0RuOiuOSyb8i1NLhKw=
-github.com/go-msvc/utils v0.0.0-20230114175405-95b6a9300925 h1:wSNSkPVDVwn0WspAG5YQxO8hTl8891q5myKyTlNfGBk=
-github.com/go-msvc/utils v0.0.0-20230114175405-95b6a9300925/go.mod h1:dqz86ud7d/Ga2RcL50dQ9HRl2Ad6uzpPKoJsaTcb5Ys=

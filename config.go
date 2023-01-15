@@ -23,6 +23,7 @@ import (
 // Must for required config - Get() will return value
 func MayConfigure(ref string, tmpl interface{}) {
 	flagConfigure(ref, tmpl, false)
+	//todo: optional not yet implemented... will fail if not configured
 }
 
 func MustConfigure(ref string, tmpl interface{}) {
@@ -31,6 +32,7 @@ func MustConfigure(ref string, tmpl interface{}) {
 
 func MayConstruct(ref string, constructedType reflect.Type) {
 	flagConstruct(ref, constructedType, false)
+	//todo: optional not yet implemented... will fail if not configured
 }
 
 func MustConstruct(ref string, constructedType reflect.Type) {
@@ -70,6 +72,7 @@ func flagConstruct(ref string, constructedType reflect.Type, required bool) {
 	info.Lock()
 	defer info.Unlock()
 	info.mustConstructByRef[ref] = true
+	log.Infof("MUST Construct \"%s\"", ref)
 } //flagConstruct()
 
 // Register a constructor implementation
@@ -234,6 +237,7 @@ func Load() error {
 				}
 			} else {
 				log.Debugf("%s: %T:%+v", constructorRef, constructorValue, constructorValue)
+				constructorByRef[ref] = constructorValue
 			}
 		}
 	}
