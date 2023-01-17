@@ -248,7 +248,7 @@ func Load() error {
 		method := reflect.ValueOf(configured).MethodByName("Create")
 		results := method.Call(nil)
 		if !results[1].IsNil() {
-			return errors.Wrapf(results[0].Interface().(error), "failed to construct %s", constructorRef)
+			return errors.Wrapf(results[1].Interface().(error), "failed to construct %s", constructorRef)
 		}
 		if results[0].IsNil() {
 			return errors.Errorf("%T.Create() returned nil,nil", configured)
@@ -269,7 +269,7 @@ func Load() error {
 // and this call will panic if not
 func Get(ref string) any {
 	if !loaded {
-		panic("config.Load() not yet done")
+		panic("config.Load() not yet called")
 	}
 	if v, ok := configByRef[ref]; ok {
 		return v
